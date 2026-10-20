@@ -161,6 +161,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="semantic search demo (browser)")
     parser.add_argument("--dir", type=Path, default=IMAGE_DIR, help="image folder (default: samples/)")
     parser.add_argument("--port", type=int, default=PORT, help=f"端口（默认 {PORT}）")
+    parser.add_argument("--host", default="127.0.0.1", help="0.0.0.0 让同一局域网里的手机也能打开")
     args = parser.parse_args()
 
     image_dir = args.dir.resolve()
@@ -297,9 +298,24 @@ def main() -> int:
 
             self.send_error(404)
 
-    print(f"\n服务已启动： http://127.0.0.1:{port}")
+    if args.host in ("0.0.0.0", "::"):
+        import socket
+
+        try:
+            probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            probe.connect(("8.8.8.8", 80))
+            lan_ip = probe.getsockname()[0]
+            probe.close()
+        except Exception:  # noqa: BLE001
+            lan_ip = "<本机局域网 IP>"
+        print(f"\n服务已启动：")
+        print(f"  本机     http://127.0.0.1:{port}")
+        print(f"  同局域网  http://{lan_ip}:{port}   （手机浏览器打开这个）")
+        print("  首次从手机访问若打不开，多半是 Windows 防火墙拦了入站连接。")
+    else:
+        print(f"\n服务已启动： http://127.0.0.1:{port}")
     print("按 Ctrl+C 停止\n")
-    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    ThreadingHTTPServer((args.host, port), Handler).serve_forever()
     return 0
 
 
