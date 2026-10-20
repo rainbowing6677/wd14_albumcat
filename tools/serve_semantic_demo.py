@@ -52,7 +52,7 @@ INDEX_HTML = """<!DOCTYPE html>
   * { box-sizing: border-box; }
   body { margin:0; background:#0F172A; color:#F8FAFC;
          font-family:"Microsoft YaHei","Segoe UI",system-ui,sans-serif; }
-  header { padding:28px 40px 18px; border-bottom:1px solid #1E293B; }
+  header { position:relative; padding:28px 40px 18px; border-bottom:1px solid #1E293B; }
   h1 { margin:0 0 6px; font-size:26px; font-weight:700; }
   .sub { color:#64748B; font-size:14px; }
   .bar { display:flex; gap:10px; margin-top:18px; max-width:820px; }
@@ -81,6 +81,26 @@ INDEX_HTML = """<!DOCTYPE html>
   .s-hi { color:#22C55E; } .s-mid { color:#F97316; } .s-lo { color:#64748B; }
   .bar-bg { height:3px; background:#1E293B; }
   .bar-fg { height:3px; background:#22D3EE; }
+  .qr { position:absolute; top:20px; right:28px; display:flex; flex-direction:column;
+        align-items:center; gap:6px; }
+  .qr img { width:104px; height:104px; border-radius:8px; background:#fff; padding:7px; display:block; }
+  .qr span { font-size:12px; color:#64748B; white-space:nowrap; }
+  @media (max-width: 760px) {
+    header { padding:16px 16px 12px; }
+    h1 { font-size:21px; margin-bottom:4px; }
+    .sub { font-size:12px; line-height:1.5; }
+    .bar { flex-direction:column; max-width:none; margin-top:12px; }
+    button { width:100%; padding:12px; }
+    .chip { padding:6px 12px; font-size:13px; }
+    .qr { display:none; }
+    main { padding:14px 16px 40px; }
+    .status { font-size:12px; line-height:1.6; }
+    .grid { grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px; }
+    .card img { height:118px; }
+    .card .meta { padding:6px 8px; }
+    .card .name { font-size:10px; }
+    .score { font-size:11px; padding:3px 8px; top:6px; right:6px; }
+  }
 </style></head><body>
 <header>
   <h1>相册语义搜索</h1>
@@ -89,6 +109,7 @@ INDEX_HTML = """<!DOCTYPE html>
     <input id="q" placeholder="试试：沙滩 / 雪山 / 花 / 森林 / 城市夜景" autofocus>
     <button onclick="search()">搜索</button>
   </div>
+  {QR_BLOCK}
   <div class="chips">
     <span class="chip" onclick="pick('海边')">海边</span>
     <span class="chip" onclick="pick('教室')">教室</span>
@@ -145,6 +166,44 @@ window.addEventListener('load', () => {
 </script></body></html>"""
 
 
+def _lan_ip() -> str | None:
+    """Best-effort LAN address, so the page can show a scannable URL."""
+    import socket
+
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        probe.connect(("8.8.8.8", 80))
+        ip = probe.getsockname()[0]
+        probe.close()
+        return ip
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _qr_block(url: str) -> str:
+    """QR code as a data URI. Optional: without `qrcode` we just show the URL."""
+    if not url:
+        return ""
+    try:
+        import base64
+        import io
+
+        import qrcode
+
+        image = qrcode.make(url)
+        buffer = io.BytesIO()
+        image.save(buffer, "PNG")
+        encoded = base64.b64encode(buffer.getvalue()).decode()
+        return (
+            '<div class="qr">'
+            f'<img src="data:image/png;base64,{encoded}" alt="{url}">'
+            "<span>手机扫码打开</span>"
+            "</div>"
+        )
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def build_thumbs(files: list[Path], thumb_dir: Path) -> None:
     thumb_dir.mkdir(exist_ok=True)
     for path in files:
@@ -162,6 +221,7 @@ def main() -> int:
     parser.add_argument("--dir", type=Path, default=IMAGE_DIR, help="image folder (default: samples/)")
     parser.add_argument("--port", type=int, default=PORT, help=f"端口（默认 {PORT}）")
     parser.add_argument("--host", default="127.0.0.1", help="0.0.0.0 让同一局域网里的手机也能打开")
+    parser.add_argument("--qr-url", default=None, help="二维码指向的地址；默认用探测到的局域网 IP")
     args = parser.parse_args()
 
     image_dir = args.dir.resolve()
@@ -178,6 +238,10 @@ def main() -> int:
     if not encoder.text_available:
         print("警告：只有图像塔，没有文本塔 —— 无法编码查询词。")
         return 1
+
+    lan_ip = _lan_ip() if args.host in ("0.0.0.0", "::") else None
+    qr_url = args.qr_url or (f"http://{lan_ip}:{port}" if lan_ip else "")
+    qr_block = _qr_block(qr_url)
 
     files = sorted(p for p in image_dir.iterdir() if p.suffix.lower() in EXTS) if image_dir.exists() else []
     if not files:
@@ -238,7 +302,7 @@ def main() -> int:
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
             if parsed.path in ("/", "/index.html"):
-                body = INDEX_HTML.replace("{COUNT}", str(len(files))).encode("utf-8")
+                body = INDEX_HTML.replace("{COUNT}", str(len(files))).replace("{QR_BLOCK}", qr_block).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
@@ -308,9 +372,11 @@ def main() -> int:
             probe.close()
         except Exception:  # noqa: BLE001
             lan_ip = "<本机局域网 IP>"
-        print(f"\n服务已启动：")
+        print("\n服务已启动：")
         print(f"  本机     http://127.0.0.1:{port}")
-        print(f"  同局域网  http://{lan_ip}:{port}   （手机浏览器打开这个）")
+        print(f"  同局域网  {qr_url}   （手机浏览器打开这个，或扫页面右上角的码）")
+        print("  手机连的是 Wi-Fi 时，IP 可能和上面这个不同：")
+        print("    用 --qr-url http://<那个IP>:端口 覆盖二维码地址")
         print("  首次从手机访问若打不开，多半是 Windows 防火墙拦了入站连接。")
     else:
         print(f"\n服务已启动： http://127.0.0.1:{port}")
