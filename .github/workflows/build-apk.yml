@@ -49,6 +49,13 @@ jobs:
       - name: Accept Android licenses
         run: yes | flutter doctor --android-licenses || true
 
+      # The jni module pulled in by a Flutter plugin configures its native
+      # build with CMake 3.22.1, and the runner image does not ship it:
+      #   [CXX1300] CMake '3.22.1' was not found in SDK, PATH, or by cmake.dir
+      # The NDK (r28c) Gradle downloads on its own; CMake it does not.
+      - name: Install CMake 3.22.1
+        run: sdkmanager --install "cmake;3.22.1" > /dev/null
+
       - name: flutter pub get
         run: flutter pub get
 
