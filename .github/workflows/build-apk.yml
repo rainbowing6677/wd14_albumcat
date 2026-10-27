@@ -79,3 +79,17 @@ jobs:
           name: aves-libre-debug-${{ inputs.target_platform }}
           path: aves/build/app/outputs/flutter-apk/app-libre-debug.apk
           if-no-files-found: error
+
+      # Artifacts expire (this repo's were gone within hours), and their zip
+      # endpoint does not support Range, so a 150 MB download that drops has to
+      # start over. A release asset has neither problem: permanent URL, resumable.
+      - name: Publish to a release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="apk-${{ github.run_number }}"
+          gh release create "$TAG" \
+            build/app/outputs/flutter-apk/app-libre-debug.apk \
+            --title "Aves libre debug APK · build ${{ github.run_number }}" \
+            --notes "Debug-signed, ${{ inputs.target_platform }}. Install on a real phone (allow unknown sources). Includes the OCR work from this week: text search, incremental indexing, watermark-sized uploads." \
+            || gh release upload "$TAG" build/app/outputs/flutter-apk/app-libre-debug.apk --clobber
