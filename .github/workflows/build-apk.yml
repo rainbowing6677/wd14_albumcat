@@ -54,7 +54,12 @@ jobs:
       #   [CXX1300] CMake '3.22.1' was not found in SDK, PATH, or by cmake.dir
       # The NDK (r28c) Gradle downloads on its own; CMake it does not.
       - name: Install CMake 3.22.1
-        run: sdkmanager --install "cmake;3.22.1" > /dev/null
+        run: |
+          # sdkmanager is not on PATH; it lives under cmdline-tools/<ver>/bin.
+          # Find whichever version the runner image shipped with.
+          SDKMGR=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1)
+          echo "sdkmanager: $SDKMGR"
+          "$SDKMGR" --install "cmake;3.22.1"
 
       - name: flutter pub get
         run: flutter pub get
