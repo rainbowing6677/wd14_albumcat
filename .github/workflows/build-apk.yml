@@ -41,8 +41,13 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # The runner image already ships an Android SDK at
+      # /usr/local/lib/android/sdk, and Flutter finds it on its own.
+      # android-actions/setup-android@v3 is deliberately NOT used: it tries to
+      # install the `tools` package, which has been dropped from the SDK repo,
+      # so it fails with "Failed to find package 'tools'".
+      - name: Accept Android licenses
+        run: yes | flutter doctor --android-licenses || true
 
       - name: flutter pub get
         run: flutter pub get
