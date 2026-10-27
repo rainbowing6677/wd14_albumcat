@@ -1,0 +1,64 @@
+name: build-apk
+
+# Build an installable debug APK of the Aves fork.
+#
+# Why this exists: the repo's own `tools\aves_build.ps1` needs JDK 21 + Android
+# SDK + Flutter 3.47 on a Windows box, which is exactly what a contributor
+# without an Android toolchain does not have. The build itself is one command,
+# so it can run here instead and hand back an APK.
+#
+# It is debug-signed on purpose: debug signing needs no keystore, installs on
+# any device, and is the right thing for "put it on my phone and look at it".
+# A release build would need the keystore from key_template.properties.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_platform:
+        description: 'Flutter target platform (android-arm64 for a real phone, android-x64 for an emulator)'
+        required: false
+        default: 'android-arm64'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aves
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.6
+          channel: stable
+          cache: true
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: flutter build apk
+        run: |
+          flutter build apk --debug \
+            --flavor libre \
+            --target-platform ${{ inputs.target_platform }} \
+            -t lib/main_libre.dart
+
+      - name: Show what came out
+        run: ls -lh build/app/outputs/flutter-apk/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aves-libre-debug-${{ inputs.target_platform }}
+          path: aves/build/app/outputs/flutter-apk/app-libre-debug.apk
+          if-no-files-found: error
