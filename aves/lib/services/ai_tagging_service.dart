@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:aves/model/app_ocr.dart';
@@ -287,15 +288,12 @@ class AiTaggingService {
         Map<int, AvesEntry> carried,
         List<AiTaggingOutcome> failures,
       })> _fetchSlice(List<AvesEntry> slice, double extentDip, int workers, AiTaggingStats? stats) async {
-    // Fetch at tagging size, OCR included.
-    //
-    // An earlier version bumped this to ~1280px so that small watermarks and
-    // credits would be readable. That worked, but it made every photo upload
-    // 7x more bytes (24 KB -> 166 KB) to serve a case that is not what this
-    // feature is for: searching the text a picture actually carries -- titles,
-    // subtitles, signs, dates. Those read fine at 448px. Corner watermarks do
-    // not, and that is the accepted trade: see docs/OCR.md.
-    final thumbs = await _mapOrdered(slice, workers, (entry) => _thumbnailBytes(entry, extentDip, stats));
+    // A photo that still needs OCR is fetched larger than tagging wants:
+    // watermarks and credits vanish below ~1280px, and a batch usually holds
+    // at most a few such photos (already-indexed ones skip it entirely).
+    final anyNeedsOcr = slice.any((e) => appOcrs.of(e.id) == null);
+    final fetchExtent = anyNeedsOcr ? math.max(extentDip, ocrExtentDip) : extentDip;
+    final thumbs = await _mapOrdered(slice, workers, (entry) => _thumbnailBytes(entry, fetchExtent, stats));
     final payload = <Map<String, Object?>>[];
     final carried = <int, AvesEntry>{};
     final failures = <AiTaggingOutcome>[];
@@ -436,6 +434,20 @@ class AiTaggingService {
   /// engine (disk cache, ARGB_8888) and the system's thumbnail database
   /// altogether, and it lets us keep RGB_565 — no alpha, so a PNG screenshot
   /// gets encoded as JPEG instead of PNG. The system methods stay as fallbacks.
+  /// Long edge the phone aims for when a photo still needs OCR.
+  ///
+  /// Tagging is happy with a ~448px thumbnail, but text that small is simply
+  /// gone. Measured on a 1902px poster carrying a small "miHoYo" watermark:
+  ///
+  ///     448px -> not even detected as a text region
+  ///     720px -> still not detected
+  ///    1280px -> detected and read
+  ///   full    -> clean
+  ///
+  /// 640dp lands on 1280px at 2x density, and higher at 3x (the service caps
+  /// the detector input anyway). Only photos that still need OCR pay for it.
+  static const double ocrExtentDip = 640;
+
   static Future<(Uint8List, String)?> _thumbnailBytes(AvesEntry entry, double extentDip, AiTaggingStats? stats) async {
     if (extentDip <= 0) extentDip = 1;
     final key = entry.getThumbnail(extent: extentDip).key;
