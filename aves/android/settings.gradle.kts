@@ -14,9 +14,11 @@ pluginManagement {
         // plugins.gradle.org is slow from a Chinese network and this build
         // pulls several plugins. Drop the three maven { } lines below if you
         // are not in China -- the rest works on its own.
-        maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
-        maven { url = uri("https://maven.aliyun.com/repository/google") }
-        maven { url = uri("https://maven.aliyun.com/repository/public") }
+        if (System.getenv("CI") == null) {
+            maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
+            maven { url = uri("https://maven.aliyun.com/repository/google") }
+            maven { url = uri("https://maven.aliyun.com/repository/public") }
+        }
         google()
         mavenCentral()
         // the mirrors above can lag behind on plugin marker artifacts

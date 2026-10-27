@@ -199,8 +199,10 @@ repositories {
     // The Aliyun mirrors come first because dl.google.com is slow from a
     // Chinese network. Drop the two maven { } lines below if you are not in
     // China -- google()/mavenCentral() from the settings script still apply.
-    maven { url = uri("https://maven.aliyun.com/repository/google") }
-    maven { url = uri("https://maven.aliyun.com/repository/public") }
+    if (System.getenv("CI") == null) {
+        maven { url = uri("https://maven.aliyun.com/repository/google") }
+        maven { url = uri("https://maven.aliyun.com/repository/public") }
+    }
     maven {
         url = uri("https://jitpack.io")
         content {
